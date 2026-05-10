@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reports — OS Security Framework</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page-content">
+
+      <div class="page-section-title">Security Reports</div>
+
+      <div class="grid-2" style="gap:20px; margin-bottom:24px;">
+        <!-- Generate Report -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--cyan-glow);color:var(--cyan);">📋</div>
+            <div class="title">Generate Report</div>
+          </div>
+          <div class="card-body">
+            <div class="form-group" style="margin-bottom:14px;">
+              <label class="form-label-cyber">Report Title</label>
+              <input id="report-title" class="form-control-cyber" value="Security Assessment Report" placeholder="Report title..." />
+            </div>
+            <div class="form-group" style="margin-bottom:20px;">
+              <label class="form-label-cyber">Report Type</label>
+              <select id="report-type" class="form-control-cyber">
+                <option value="full">Full Report</option>
+                <option value="attack">Attack Report</option>
+                <option value="security">Security Report</option>
+              </select>
+            </div>
+            <button class="btn-cyber primary w-full" style="justify-content:center;" onclick="generateReport()" id="gen-btn">
+              ⬇ Generate Report
+            </button>
+            <div id="gen-loading" style="display:none; text-align:center; padding:16px; color:var(--text-muted); font-size:12px;">
+              <span class="mono">Generating report...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--green-glow);color:var(--green);">📊</div>
+            <div class="title">Report Stats</div>
+          </div>
+          <div class="card-body" id="report-stats">
+            <div style="text-align:center;padding:30px;color:var(--text-muted);">Loading...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reports List -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:var(--yellow-glow);color:var(--yellow);">🗂</div>
+          <div class="title">Generated Reports</div>
+          <button class="btn-cyber ghost" style="margin-left:auto;padding:4px 12px;font-size:11px;" onclick="loadReports()">↻ Refresh</button>
+        </div>
+        <div class="card-body" style="padding:0; max-height:500px; overflow-y:auto;">
+          <table class="table-cyber">
+            <thead>
+              <tr><th>Title</th><th>Type</th><th>Size</th><th>By</th><th>Created</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="reports-tbody">
+              <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">Loading reports...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Report Preview Modal -->
+      <div id="report-modal" style="display:none; position:fixed; inset:0; background:rgba(2,8,16,0.92); z-index:1000; padding:40px; overflow-y:auto;">
+        <div style="max-width:800px; margin:0 auto; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden;">
+          <div class="card-header" style="padding:16px 20px;">
+            <div class="card-icon" style="background:var(--cyan-glow);color:var(--cyan);">📋</div>
+            <div class="title" id="modal-title">Report</div>
+            <button onclick="closeModal()" style="margin-left:auto; background:none; border:none; color:var(--red); font-size:20px; cursor:pointer;">✕</button>
+          </div>
+          <div style="padding:20px;">
+            <pre id="modal-content" style="font-family:var(--font-mono); font-size:11px; color:var(--text); white-space:pre-wrap; line-height:1.7; max-height:70vh; overflow-y:auto;"></pre>
+          </div>
+          <div style="padding:16px 20px; border-top:1px solid var(--border); display:flex; gap:10px;">
+            <button class="btn-cyber primary" onclick="downloadReport()">⬇ Download .txt</button>
+            <button class="btn-cyber ghost" onclick="closeModal()">Close</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    requireAuth();
+    document.getElementById('sidebar-mount').innerHTML = renderSidebar('reports');
+    document.getElementById('topbar-mount').innerHTML  = renderTopbar('Reports', 'Security & Attack Analysis Reports');
+
+    let currentReportContent = '';
+    let currentReportTitle = '';
+
+    async function generateReport() {
+      const title = document.getElementById('report-title').value.trim() || 'Security Report';
+      const type  = document.getElementById('report-type').value;
+
+      document.getElementById('gen-btn').disabled = true;
+      document.getElementById('gen-loading').style.display = '';
+
+      const res = await apiPost('/reports/generate', { title, type });
+
+      document.getElementById('gen-btn').disabled = false;
+      document.getElementById('gen-loading').style.display = 'none';
+
+      if (!res?.ok) {
+        showToast(res?.data?.message || 'Failed to generate report', 'error');
+        return;
+      }
+
+      showToast('Report generated successfully!', 'success');
+      loadReports();
+      loadStats();
+    }
+
+    async function loadReports() {
+      const res = await apiGet('/reports');
+      if (!res?.ok) return;
+      const reports = res.data.data || res.data || [];
+      const tbody = document.getElementById('reports-tbody');
+
+      if (!reports.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">No reports yet. Generate one above.</td></tr>`;
+        return;
+      }
+
+      const typeColors = { full: 'cyan', attack: 'high', security: 'blocked' };
+      tbody.innerHTML = reports.map(r => `
+        <tr>
+          <td class="text-bright">${r.title}</td>
+          <td><span class="badge-cyber ${typeColors[r.type]||'medium'}">${(r.type||'full').toUpperCase()}</span></td>
+          <td class="mono text-xs">${r.fileSize ? fmtSize(r.fileSize) : '—'}</td>
+          <td class="mono text-muted-c text-xs">${r.generatedBy?.username || 'system'}</td>
+          <td class="mono text-muted-c text-xs">${fmtDate(r.createdAt)}</td>
+          <td style="display:flex;gap:6px;">
+            <button class="btn-cyber ghost" style="padding:3px 10px;font-size:10px;" onclick="viewReport('${r._id}', '${r.title}')">View</button>
+            <button class="btn-cyber ghost" style="padding:3px 10px;font-size:10px;color:var(--red);" onclick="deleteReport('${r._id}')">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadStats() {
+      const [attacksRes, alertsRes] = await Promise.all([
+        apiGet('/attacks/stats'),
+        apiGet('/monitoring/alerts')
+      ]);
+
+      const attacks = attacksRes?.data?.data || {};
+      const alerts  = alertsRes?.data?.data || [];
+      const unread  = Array.isArray(alerts) ? alerts.filter(a => !a.isRead).length : 0;
+
+      document.getElementById('report-stats').innerHTML = `
+        <div class="grid-2" style="gap:12px; margin-bottom:14px;">
+          <div><div class="stat-label">Total Attacks</div><div class="mono text-red" style="font-size:20px;">${attacks.total || 0}</div></div>
+          <div><div class="stat-label">Unread Alerts</div><div class="mono text-yellow" style="font-size:20px;">${unread}</div></div>
+        </div>
+        <div class="grid-2" style="gap:12px;">
+          <div><div class="stat-label">Critical</div><div class="mono text-red">${attacks.bySeverity?.CRITICAL || 0}</div></div>
+          <div><div class="stat-label">High</div><div class="mono text-yellow">${attacks.bySeverity?.HIGH || 0}</div></div>
+          <div><div class="stat-label">Medium</div><div class="mono text-cyan">${attacks.bySeverity?.MEDIUM || 0}</div></div>
+          <div><div class="stat-label">Blocked</div><div class="mono text-green">${attacks.byStatus?.BLOCKED || 0}</div></div>
+        </div>
+      `;
+    }
+
+    async function viewReport(id, title) {
+      const res = await apiGet(`/reports/${id}`);
+      if (!res?.ok) { showToast('Could not load report', 'error'); return; }
+      const r = res.data.data || res.data;
+      currentReportContent = r.content || 'No content available';
+      currentReportTitle   = r.title || title;
+      document.getElementById('modal-title').textContent = currentReportTitle;
+      document.getElementById('modal-content').textContent = currentReportContent;
+      document.getElementById('report-modal').style.display = '';
+    }
+
+    async function deleteReport(id) {
+      if (!confirm('Delete this report?')) return;
+      const res = await apiDelete(`/reports/${id}`);
+      if (res?.ok) { showToast('Report deleted', 'success'); loadReports(); }
+      else showToast('Delete failed (admin only)', 'error');
+    }
+
+    function closeModal() {
+      document.getElementById('report-modal').style.display = 'none';
+    }
+
+    function downloadReport() {
+      const blob = new Blob([currentReportContent], { type: 'text/plain' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `${currentReportTitle.replace(/\s+/g,'_')}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function fmtSize(bytes) {
+      if (!bytes) return '—';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+      return (bytes/(1024*1024)).toFixed(1) + ' MB';
+    }
+
+    loadReports();
+    loadStats();
+  </script>
+</body>
+</html>

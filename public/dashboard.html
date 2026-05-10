@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — OS Security Framework</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div id="sidebar-mount"></div>
+
+  <div class="main">
+    <div id="topbar-mount"></div>
+
+    <div class="page-content">
+
+      <!-- STAT CARDS -->
+      <div class="grid-4 mb-6">
+        <div class="stat-card red">
+          <div class="stat-label">Total Attacks</div>
+          <div class="stat-value red" id="s-attacks">—</div>
+          <div class="stat-sub">Simulated events</div>
+          <div class="stat-icon-bg">⚡</div>
+        </div>
+        <div class="stat-card yellow">
+          <div class="stat-label">Active Alerts</div>
+          <div class="stat-value yellow" id="s-alerts">—</div>
+          <div class="stat-sub">Unread notifications</div>
+          <div class="stat-icon-bg">⚠</div>
+        </div>
+        <div class="stat-card cyan">
+          <div class="stat-label">CPU Usage</div>
+          <div class="stat-value cyan" id="s-cpu">—</div>
+          <div class="stat-sub">Current load</div>
+          <div class="stat-icon-bg">⚙</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">Memory Used</div>
+          <div class="stat-value green" id="s-mem">—</div>
+          <div class="stat-sub">System memory</div>
+          <div class="stat-icon-bg">▦</div>
+        </div>
+      </div>
+
+      <div class="grid-2 mb-6" style="grid-template-columns:1.6fr 1fr;">
+        <!-- CPU Chart -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--cyan-glow);color:var(--cyan);">⚙</div>
+            <div class="title">CPU Usage — Live</div>
+            <div class="status-pill online" style="margin-left:auto;">Live</div>
+          </div>
+          <div class="card-body">
+            <canvas id="chart-cpu" height="120"></canvas>
+          </div>
+        </div>
+
+        <!-- Attack Stats Doughnut -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--red-glow);color:var(--red);">⚡</div>
+            <div class="title">Attack Severity</div>
+          </div>
+          <div class="card-body" style="display:flex; align-items:center; justify-content:center;">
+            <div style="width:180px; height:180px;">
+              <canvas id="chart-severity"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2 mb-6">
+        <!-- Recent Attacks -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--red-glow);color:var(--red);">📋</div>
+            <div class="title">Recent Attack Logs</div>
+            <a href="/attacks.html" class="btn-cyber ghost" style="margin-left:auto; padding:4px 12px; font-size:11px;">View All</a>
+          </div>
+          <div class="card-body" style="padding:0;">
+            <table class="table-cyber">
+              <thead>
+                <tr><th>Type</th><th>Severity</th><th>Status</th><th>Time</th></tr>
+              </thead>
+              <tbody id="recent-attacks">
+                <tr><td colspan="4" style="text-align:center; padding:24px; color:var(--text-muted);">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Live Alerts -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--yellow-glow);color:var(--yellow);">🔔</div>
+            <div class="title">Live Alerts</div>
+            <button class="btn-cyber ghost" style="margin-left:auto; padding:4px 12px; font-size:11px;" onclick="markAllRead()">Mark All Read</button>
+          </div>
+          <div class="card-body" style="max-height:290px; overflow-y:auto;" id="alerts-list">
+            <div style="text-align:center; padding:30px; color:var(--text-muted);">Loading...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Memory Chart -->
+      <div class="card mb-6">
+        <div class="card-header">
+          <div class="card-icon" style="background:var(--green-glow);color:var(--green);">▦</div>
+          <div class="title">Memory Usage — Live</div>
+        </div>
+        <div class="card-body">
+          <canvas id="chart-mem" height="80"></canvas>
+        </div>
+      </div>
+
+    </div><!-- /page-content -->
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    requireAuth();
+    document.getElementById('sidebar-mount').innerHTML = renderSidebar('dashboard');
+    document.getElementById('topbar-mount').innerHTML  = renderTopbar('Dashboard', 'System Overview');
+
+    // CPU history data
+    const cpuLabels = [], cpuData = [];
+    let cpuChart, memChart, sevChart;
+
+    function initCharts() {
+      const cOpts = { responsive: true, animation: false, plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: 'rgba(0,212,255,0.05)' }, ticks: { color: '#3a5a7a', maxTicksLimit: 8 } },
+          y: { grid: { color: 'rgba(0,212,255,0.05)' }, ticks: { color: '#3a5a7a' }, min: 0, max: 100,
+               callback: v => v + '%' }
+        }
+      };
+
+      cpuChart = new Chart(document.getElementById('chart-cpu'), {
+        type: 'line',
+        data: { labels: cpuLabels, datasets: [{ label: 'CPU %', data: cpuData,
+          borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.06)',
+          borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0 }] },
+        options: cOpts
+      });
+
+      const memLabels = [], memData = [];
+      for (let i = 0; i < 20; i++) { memLabels.push(''); memData.push(0); }
+      memChart = new Chart(document.getElementById('chart-mem'), {
+        type: 'bar',
+        data: { labels: memLabels, datasets: [{ label: 'Memory %', data: memData,
+          backgroundColor: 'rgba(0,255,136,0.25)', borderColor: '#00ff88', borderWidth: 1 }] },
+        options: {
+          responsive: true, animation: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { display: false } },
+            y: { grid: { color: 'rgba(0,212,255,0.05)' }, ticks: { color: '#3a5a7a' },
+                 min: 0, max: 100, callback: v => v + '%' }
+          }
+        }
+      });
+
+      sevChart = new Chart(document.getElementById('chart-severity'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Critical', 'High', 'Medium', 'Low'],
+          datasets: [{ data: [0, 0, 0, 0],
+            backgroundColor: ['rgba(255,51,85,0.8)', 'rgba(255,200,32,0.8)', 'rgba(0,212,255,0.7)', 'rgba(0,255,136,0.7)'],
+            borderColor: ['#ff3355','#ffc820','#00d4ff','#00ff88'],
+            borderWidth: 1 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: true,
+          plugins: { legend: { position: 'bottom', labels: { color: '#b8cde8', font: { size: 11 }, boxWidth: 12 } } },
+          cutout: '65%'
+        }
+      });
+    }
+
+    async function loadStats() {
+      const res = await apiGet('/monitoring/stats');
+      if (!res?.ok) return;
+      const d = res.data.data || res.data;
+
+      const cpu = +(d.cpu?.usage || d.cpuUsage || Math.random() * 40 + 10).toFixed(1);
+      const mem = +(d.memory?.usedPercent || d.memoryUsage || Math.random() * 50 + 20).toFixed(1);
+
+      document.getElementById('s-cpu').textContent = cpu + '%';
+      document.getElementById('s-mem').textContent = mem + '%';
+
+      // Update CPU chart
+      const now = new Date().toLocaleTimeString('en-IN', { hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+      if (cpuLabels.length >= 20) { cpuLabels.shift(); cpuData.shift(); }
+      cpuLabels.push(now); cpuData.push(cpu);
+      cpuChart.update();
+
+      // Update memory chart
+      memChart.data.labels.shift(); memChart.data.labels.push(now);
+      memChart.data.datasets[0].data.shift(); memChart.data.datasets[0].data.push(mem);
+      memChart.update();
+    }
+
+    async function loadDashboard() {
+      const [dashRes, alertsRes] = await Promise.all([
+        apiGet('/monitoring/dashboard'),
+        apiGet('/monitoring/alerts')
+      ]);
+
+      if (dashRes?.ok) {
+        const d = dashRes.data.data || dashRes.data;
+        document.getElementById('s-attacks').textContent = d.totalAttacks || d.attacksCount || '—';
+        document.getElementById('s-alerts').textContent  = d.unreadAlerts || d.alertsCount  || '—';
+      }
+
+      if (alertsRes?.ok) {
+        const alerts = alertsRes.data.data || alertsRes.data || [];
+        renderAlerts(Array.isArray(alerts) ? alerts.slice(0, 6) : []);
+      }
+    }
+
+    async function loadAttackStats() {
+      const res = await apiGet('/attacks/stats');
+      if (!res?.ok) return;
+      const d = res.data.data || res.data;
+      // Expect counts by severity
+      const bySev = d.bySeverity || d.severityStats || {};
+      sevChart.data.datasets[0].data = [
+        bySev.CRITICAL || 0,
+        bySev.HIGH     || 0,
+        bySev.MEDIUM   || 0,
+        bySev.LOW      || 0
+      ];
+      sevChart.update();
+    }
+
+    async function loadRecentAttacks() {
+      const res = await apiGet('/attacks?limit=6');
+      if (!res?.ok) return;
+      const attacks = res.data.data || res.data || [];
+      const tbody = document.getElementById('recent-attacks');
+      if (!Array.isArray(attacks) || !attacks.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:24px; color:var(--text-muted);">No attacks logged yet</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = attacks.slice(0, 6).map(a => `
+        <tr>
+          <td class="text-bright">${a.attackType || a.type || '—'}</td>
+          <td>${severityBadge(a.severity)}</td>
+          <td>${statusBadge(a.status)}</td>
+          <td class="mono text-muted-c text-xs">${fmtDate(a.createdAt || a.timestamp)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderAlerts(alerts) {
+      const el = document.getElementById('alerts-list');
+      if (!alerts.length) {
+        el.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted);">No active alerts</div>`;
+        return;
+      }
+      const classMap = { CRITICAL:'critical', DANGER:'high', HIGH:'high', MEDIUM:'medium', INFO:'medium' };
+      el.innerHTML = alerts.map(a => {
+        const cls = classMap[a.severity] || 'medium';
+        return `
+          <div class="alert-item ${cls}">
+            <div class="alert-dot"></div>
+            <div style="flex:1;">
+              <div class="alert-msg">${a.title || a.message || 'Alert'}</div>
+              <div class="alert-time">${fmtDate(a.createdAt)}</div>
+            </div>
+            ${a.isRead ? '' : '<span class="badge-cyber medium" style="font-size:9px;">NEW</span>'}
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function markAllRead() {
+      await apiPut('/monitoring/alerts/read-all');
+      showToast('All alerts marked as read', 'success');
+      loadDashboard();
+    }
+
+    // Init
+    initCharts();
+    loadStats();
+    loadDashboard();
+    loadRecentAttacks();
+    loadAttackStats();
+
+    // Refresh stats every 5s
+    setInterval(loadStats, 5000);
+    setInterval(loadDashboard, 15000);
+    setInterval(loadRecentAttacks, 20000);
+  </script>
+</body>
+</html>

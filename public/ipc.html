@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPC Simulation — OS Security Framework</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .ipc-btn-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px; margin-bottom: 24px;
+    }
+    .ipc-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 18px;
+      cursor: pointer; transition: all 0.2s; text-align: center;
+    }
+    .ipc-card:hover { border-color: var(--cyan); background: var(--cyan-glow); transform: translateY(-2px); }
+    .ipc-card.active { border-color: var(--cyan); background: var(--cyan-glow); }
+    .ipc-card .ic-icon { font-size: 28px; margin-bottom: 8px; }
+    .ipc-card .ic-name { font-size: 12px; font-weight: 600; color: var(--text-bright); margin-bottom: 3px; }
+    .ipc-card .ic-desc { font-size: 11px; color: var(--text-muted); }
+
+    .pipe-anim {
+      display: flex; align-items: center; gap: 0; margin: 20px 0;
+    }
+    .proc-box {
+      background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 16px; font-size: 12px; font-weight: 600; color: var(--text-bright);
+      min-width: 100px; text-align: center;
+    }
+    .pipe-tube {
+      flex: 1; height: 6px; background: linear-gradient(90deg, var(--cyan), var(--purple));
+      border-radius: 3px; position: relative; overflow: hidden;
+    }
+    .pipe-tube::after {
+      content: '';
+      position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+      background: rgba(255,255,255,0.3);
+      animation: flow 1.5s linear infinite;
+    }
+    @keyframes flow { to { left: 200%; } }
+    .arrow { font-size: 14px; color: var(--cyan); margin: 0 8px; }
+  </style>
+</head>
+<body>
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page-content">
+
+      <!-- IPC Mechanism Selector -->
+      <div class="page-section-title">IPC Mechanisms</div>
+      <div class="ipc-btn-grid">
+        <div class="ipc-card active" id="ipc-pipe"   onclick="selectIPC('pipe')">
+          <div class="ic-icon">🔗</div>
+          <div class="ic-name">Pipes</div>
+          <div class="ic-desc">Unidirectional data stream</div>
+        </div>
+        <div class="ipc-card" id="ipc-shared-memory"  onclick="selectIPC('shared-memory')">
+          <div class="ic-icon">🔄</div>
+          <div class="ic-name">Shared Memory</div>
+          <div class="ic-desc">Common memory region</div>
+        </div>
+        <div class="ipc-card" id="ipc-message-queue"  onclick="selectIPC('message-queue')">
+          <div class="ic-icon">📨</div>
+          <div class="ic-name">Message Queue</div>
+          <div class="ic-desc">Asynchronous messaging</div>
+        </div>
+        <div class="ipc-card" id="ipc-producer-consumer" onclick="selectIPC('producer-consumer')">
+          <div class="ic-icon">⚙</div>
+          <div class="ic-name">Producer-Consumer</div>
+          <div class="ic-desc">Bounded buffer problem</div>
+        </div>
+        <div class="ipc-card" id="ipc-dining-philosophers" onclick="selectIPC('dining-philosophers')">
+          <div class="ic-icon">🍽</div>
+          <div class="ic-name">Dining Philosophers</div>
+          <div class="ic-desc">Deadlock avoidance</div>
+        </div>
+      </div>
+
+      <!-- Config + Visualization -->
+      <div class="grid-2" style="gap:20px;">
+        <!-- Config Panel -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--cyan-glow);color:var(--cyan);" id="config-icon">🔗</div>
+            <div class="title" id="config-title">Pipe Configuration</div>
+          </div>
+          <div class="card-body" id="config-body">
+            <!-- filled by JS -->
+          </div>
+        </div>
+
+        <!-- Result / Visualization -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--green-glow);color:var(--green);">▶</div>
+            <div class="title">Simulation Visualization</div>
+          </div>
+          <div class="card-body" id="result-body">
+            <div style="text-align:center; padding:40px; color:var(--text-muted);">
+              Configure and run a simulation to see results
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Log Terminal -->
+      <div class="card mt-6" style="margin-top:20px;">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(0,255,136,0.1);color:var(--green);">⬛</div>
+          <div class="title">IPC Communication Log</div>
+          <button class="btn-cyber ghost" style="margin-left:auto;padding:4px 12px;font-size:11px;" onclick="document.getElementById('ipc-terminal').innerHTML=''">Clear</button>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <div class="log-terminal" id="ipc-terminal">
+            <span class="log-entry info"><span class="ts">[IPC]</span>IPC simulation terminal ready.<span class="cursor"></span></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    requireAuth();
+    document.getElementById('sidebar-mount').innerHTML = renderSidebar('ipc');
+    document.getElementById('topbar-mount').innerHTML  = renderTopbar('IPC Simulation', 'Pipes · Shared Memory · Message Queues · Synchronization');
+
+    let currentIPC = 'pipe';
+
+    const IPC_CONFIG = {
+      pipe: {
+        icon: '🔗', title: 'Pipe Configuration',
+        fields: [
+          { id: 'msg', label: 'Message to send', placeholder: 'Hello from Process A', type: 'text' },
+          { id: 'buf-size', label: 'Buffer Size', placeholder: '1024', type: 'number', value: '1024' }
+        ],
+        buildBody: (v) => ({ message: v.msg, bufferSize: parseInt(v['buf-size']) || 1024 })
+      },
+      'shared-memory': {
+        icon: '🔄', title: 'Shared Memory Configuration',
+        fields: [
+          { id: 'seg-name', label: 'Segment Name', placeholder: 'shm_seg1', value: 'shm_seg1' },
+          { id: 'seg-size', label: 'Segment Size (bytes)', placeholder: '4096', type: 'number', value: '4096' },
+          { id: 'data', label: 'Data to Write', placeholder: 'shared data...', value: 'Hello from shared memory!' }
+        ],
+        buildBody: (v) => ({ segmentName: v['seg-name'], size: parseInt(v['seg-size']) || 4096, data: v.data })
+      },
+      'message-queue': {
+        icon: '📨', title: 'Message Queue Configuration',
+        fields: [
+          { id: 'msg-count', label: 'Number of Messages', placeholder: '5', type: 'number', value: '5' },
+          { id: 'msg-type', label: 'Message Type', placeholder: '1', type: 'number', value: '1' },
+          { id: 'msg-text', label: 'Message Text', placeholder: 'Task payload data', value: 'Task payload data' }
+        ],
+        buildBody: (v) => ({ messageCount: parseInt(v['msg-count']) || 5, messageType: parseInt(v['msg-type']) || 1, message: v['msg-text'] })
+      },
+      'producer-consumer': {
+        icon: '⚙', title: 'Producer-Consumer Configuration',
+        fields: [
+          { id: 'buf', label: 'Buffer Size', placeholder: '5', type: 'number', value: '5' },
+          { id: 'items', label: 'Items to Produce', placeholder: '10', type: 'number', value: '10' },
+          { id: 'delay', label: 'Delay (ms)', placeholder: '100', type: 'number', value: '100' }
+        ],
+        buildBody: (v) => ({ bufferSize: parseInt(v.buf)||5, itemCount: parseInt(v.items)||10, delay: parseInt(v.delay)||100 })
+      },
+      'dining-philosophers': {
+        icon: '🍽', title: 'Dining Philosophers Configuration',
+        fields: [
+          { id: 'philo', label: 'Number of Philosophers', placeholder: '5', type: 'number', value: '5' },
+          { id: 'cycles', label: 'Simulation Cycles', placeholder: '3', type: 'number', value: '3' }
+        ],
+        buildBody: (v) => ({ philosophers: parseInt(v.philo)||5, cycles: parseInt(v.cycles)||3 })
+      }
+    };
+
+    function selectIPC(type) {
+      currentIPC = type;
+      document.querySelectorAll('.ipc-card').forEach(c => c.classList.remove('active'));
+      document.getElementById('ipc-' + type)?.classList.add('active');
+
+      const cfg = IPC_CONFIG[type];
+      document.getElementById('config-icon').textContent  = cfg.icon;
+      document.getElementById('config-title').textContent = cfg.title;
+
+      const body = document.getElementById('config-body');
+      body.innerHTML = cfg.fields.map(f => `
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label-cyber">${f.label}</label>
+          <input id="f-${f.id}" type="${f.type||'text'}" class="form-control-cyber"
+            placeholder="${f.placeholder||''}" value="${f.value||''}" />
+        </div>
+      `).join('') + `
+        <button class="btn-cyber primary w-full" style="justify-content:center; margin-top:8px;" onclick="runIPC('${type}')">▶ Run Simulation</button>
+      `;
+    }
+
+    async function runIPC(type) {
+      const cfg = IPC_CONFIG[type];
+      const values = {};
+      cfg.fields.forEach(f => { values[f.id] = document.getElementById('f-' + f.id)?.value || ''; });
+      const body = cfg.buildBody(values);
+
+      logToTerminal('ipc-terminal', `Starting ${type} simulation...`, 'info');
+      const res = await apiPost(`/ipc/${type}`, body);
+
+      if (!res?.ok) {
+        logToTerminal('ipc-terminal', `✗ ${type} failed: ${res?.data?.message || 'error'}`, 'warning');
+        showToast('IPC simulation failed', 'error');
+        return;
+      }
+
+      const d = res.data.data || res.data;
+      renderResult(type, d);
+      logToTerminal('ipc-terminal', `✓ ${type} simulation completed`, 'success');
+      if (d.log) d.log.forEach(l => logToTerminal('ipc-terminal', l, 'info'));
+      showToast(`${type} simulation complete`, 'success');
+    }
+
+    function renderResult(type, d) {
+      const el = document.getElementById('result-body');
+      if (type === 'pipe') {
+        el.innerHTML = `
+          <div class="pipe-anim">
+            <div class="proc-box">Process A<br><span class="mono text-xs text-cyan">[Writer]</span></div>
+            <div class="arrow">→</div>
+            <div class="pipe-tube"></div>
+            <div class="arrow">→</div>
+            <div class="proc-box">Process B<br><span class="mono text-xs text-green">[Reader]</span></div>
+          </div>
+          <div style="background:var(--bg-base); border:1px solid var(--border); border-radius:6px; padding:12px; font-family:var(--font-mono); font-size:12px;">
+            <div class="text-muted-c text-xs" style="margin-bottom:6px;">Pipe output:</div>
+            <div class="text-green">${d.message || d.received || d.output || JSON.stringify(d)}</div>
+          </div>
+          <div class="grid-2" style="gap:12px; margin-top:14px;">
+            <div style="text-align:center;"><div class="stat-label">Bytes Sent</div><div class="mono text-cyan">${d.bytesSent||d.size||'—'}</div></div>
+            <div style="text-align:center;"><div class="stat-label">Status</div><div class="mono text-green">${d.status||'SUCCESS'}</div></div>
+          </div>`;
+      } else if (type === 'producer-consumer') {
+        const buf = d.buffer || d.bufferState || [];
+        el.innerHTML = `
+          <div class="stat-label" style="margin-bottom:10px;">Buffer State</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;">
+            ${buf.map(item => `<div style="background:var(--cyan-glow);border:1px solid var(--cyan-border);border-radius:6px;padding:6px 12px;font-family:var(--font-mono);font-size:12px;color:var(--cyan);">${item}</div>`).join('') || '<span class="text-muted-c">Empty buffer</span>'}
+          </div>
+          <div class="grid-2" style="gap:12px;">
+            <div class="stat-card green"><div class="stat-label">Items Produced</div><div class="stat-value green" style="font-size:22px;">${d.produced||0}</div></div>
+            <div class="stat-card cyan"><div class="stat-label">Items Consumed</div><div class="stat-value cyan" style="font-size:22px;">${d.consumed||0}</div></div>
+          </div>`;
+      } else if (type === 'dining-philosophers') {
+        const phils = d.philosophers || d.states || [];
+        el.innerHTML = `
+          <div class="stat-label" style="margin-bottom:10px;">Philosopher States</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            ${phils.map((p, i) => `
+              <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-base); border-radius:6px; border:1px solid var(--border);">
+                <span>🍽</span>
+                <span class="text-bright" style="width:120px;">Philosopher ${p.id ?? i+1}</span>
+                <span class="badge-cyber ${p.state==='eating'?'blocked':p.state==='thinking'?'resolved':'detected'}">${p.state||'thinking'}</span>
+                ${p.forks ? `<span class="mono text-xs text-muted-c">forks: ${p.forks}</span>` : ''}
+              </div>
+            `).join('') || '<div class="text-muted-c">No philosopher data</div>'}
+          </div>
+          ${d.deadlock ? '<div class="badge-cyber critical" style="margin-top:12px; font-size:11px; padding:6px 12px;">⚠ Deadlock Detected</div>' : '<div class="badge-cyber blocked" style="margin-top:12px; font-size:11px; padding:6px 12px;">✓ No Deadlock</div>'}`;
+      } else {
+        el.innerHTML = `<pre style="font-family:var(--font-mono); font-size:11px; color:var(--text); white-space:pre-wrap;">${JSON.stringify(d, null, 2)}</pre>`;
+      }
+    }
+
+    selectIPC('pipe');
+  </script>
+</body>
+</html>

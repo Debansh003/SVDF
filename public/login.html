@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — OS Security Framework</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .scan-line {
+      position: fixed; top: 0; left: 0; width: 100%;
+      height: 2px; background: rgba(0,212,255,0.4);
+      animation: scan 4s linear infinite;
+      pointer-events: none; z-index: 10;
+    }
+    @keyframes scan { 0%{top:0} 100%{top:100%} }
+    .glitch-text {
+      position: relative;
+      animation: glitch-anim 5s infinite;
+    }
+    @keyframes glitch-anim {
+      0%,90%,100% { text-shadow: none; }
+      92% { text-shadow: -2px 0 var(--red), 2px 0 var(--cyan); letter-spacing: 4px; }
+      94% { text-shadow: 2px 0 var(--red), -2px 0 var(--cyan); }
+    }
+    .hex-bg {
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(circle at 20% 50%, rgba(0,212,255,0.04) 0%, transparent 50%),
+        radial-gradient(circle at 80% 50%, rgba(153,102,255,0.04) 0%, transparent 50%);
+      pointer-events: none;
+    }
+    .credentials-hint {
+      background: rgba(0,212,255,0.06);
+      border: 1px solid var(--cyan-border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+    .credentials-hint code {
+      color: var(--cyan); font-family: var(--font-mono); font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="scan-line"></div>
+  <div class="hex-bg"></div>
+
+  <div class="login-page">
+    <div class="login-box">
+      <div class="login-logo">
+        <span class="shield">🛡</span>
+        <h1 class="glitch-text">OS-SECURITY</h1>
+        <p>Vulnerability Detection Framework</p>
+      </div>
+
+      <div class="credentials-hint">
+        <strong style="color:var(--cyan-border)">Demo credentials:</strong><br>
+        Admin: <code>admin@ossecurity.com</code> / <code>admin123</code><br>
+        User: <code>analyst@ossecurity.com</code> / <code>analyst123</code>
+      </div>
+
+      <div id="error-msg" style="display:none; background:rgba(255,51,85,0.1); border:1px solid rgba(255,51,85,0.3); border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:12.5px; color:var(--red);"></div>
+
+      <div class="form-group">
+        <label class="form-label-cyber">Email</label>
+        <input id="email" type="email" class="form-control-cyber" placeholder="admin@ossecurity.com" autocomplete="email" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label-cyber">Password</label>
+        <input id="password" type="password" class="form-control-cyber" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+
+      <button id="login-btn" class="btn-cyber primary w-full" style="justify-content:center; padding:11px; margin-top:4px; font-size:13px;" onclick="handleLogin()">
+        <span id="btn-text">⚡ ACCESS SYSTEM</span>
+      </button>
+
+      <div style="text-align:center; margin-top:20px; font-size:11px; color:var(--text-muted);">
+        Secured with JWT + bcrypt · RBAC enforced
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    redirectIfAuth();
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') handleLogin();
+    });
+
+    async function handleLogin() {
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const btn      = document.getElementById('login-btn');
+      const btnText  = document.getElementById('btn-text');
+      const errEl    = document.getElementById('error-msg');
+
+      if (!email || !password) {
+        showErr('Please enter email and password.');
+        return;
+      }
+
+      btn.disabled = true;
+      btnText.textContent = '⟳ Authenticating...';
+      errEl.style.display = 'none';
+
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.token) {
+        setAuth(data.token, data.user || { email, role: 'user', username: email.split('@')[0] });
+        window.location.href = '/dashboard.html';
+      } else {
+        showErr(data.message || 'Invalid credentials. Please try again.');
+        btn.disabled = false;
+        btnText.textContent = '⚡ ACCESS SYSTEM';
+      }
+    }
+
+    function showErr(msg) {
+      const el = document.getElementById('error-msg');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

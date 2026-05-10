@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Process Scheduling — OS Security Framework</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .algo-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; cursor: pointer;
+      transition: all 0.2s; text-align: center;
+    }
+    .algo-card:hover, .algo-card.active {
+      border-color: var(--cyan); background: var(--cyan-glow);
+    }
+    .algo-card .algo-icon { font-size: 26px; margin-bottom: 8px; }
+    .algo-card .algo-name { font-size: 12px; font-weight: 700; color: var(--text-bright); }
+    .algo-card .algo-desc { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+    .process-table-row { cursor: pointer; }
+    .process-table-row:hover td { background: var(--bg-hover); }
+    .gantt-container { overflow-x: auto; padding: 10px 0; }
+    .gantt-timeline { display: flex; align-items: center; gap: 2px; margin-bottom: 6px; min-width: max-content; }
+    .gantt-seg {
+      height: 36px; display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #000; border-radius: 4px;
+      min-width: 40px; transition: all 0.3s;
+    }
+    .gantt-times { display: flex; min-width: max-content; }
+    .gantt-time-mark { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+  </style>
+</head>
+<body>
+  <div id="sidebar-mount"></div>
+  <div class="main">
+    <div id="topbar-mount"></div>
+    <div class="page-content">
+
+      <div class="page-section-title">CPU Scheduling Algorithms</div>
+
+      <!-- Algorithm Selector -->
+      <div class="grid-4 mb-6" style="gap:14px;">
+        <div class="algo-card active" id="algo-fcfs" onclick="selectAlgo('fcfs')">
+          <div class="algo-icon">➡</div>
+          <div class="algo-name">FCFS</div>
+          <div class="algo-desc">First Come First Serve</div>
+        </div>
+        <div class="algo-card" id="algo-sjf" onclick="selectAlgo('sjf')">
+          <div class="algo-icon">⚡</div>
+          <div class="algo-name">SJF</div>
+          <div class="algo-desc">Shortest Job First</div>
+        </div>
+        <div class="algo-card" id="algo-rr" onclick="selectAlgo('rr')">
+          <div class="algo-icon">🔄</div>
+          <div class="algo-name">Round Robin</div>
+          <div class="algo-desc">Time Quantum Sharing</div>
+        </div>
+        <div class="algo-card" id="algo-priority" onclick="selectAlgo('priority')">
+          <div class="algo-icon">⭐</div>
+          <div class="algo-name">Priority</div>
+          <div class="algo-desc">Priority Based Scheduling</div>
+        </div>
+      </div>
+
+      <div class="grid-2 mb-6" style="gap:20px;">
+        <!-- Add Process -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--cyan-glow);color:var(--cyan);">⚙</div>
+            <div class="title">Add Process</div>
+          </div>
+          <div class="card-body">
+            <div class="form-group" style="margin-bottom:14px;">
+              <label class="form-label-cyber">Process Name</label>
+              <input id="p-name" class="form-control-cyber" placeholder="e.g. P1, WebServer" value="P1" />
+            </div>
+            <div class="grid-2" style="gap:12px; margin-bottom:14px;">
+              <div>
+                <label class="form-label-cyber">Arrival Time</label>
+                <input id="p-arrival" type="number" class="form-control-cyber" value="0" min="0" />
+              </div>
+              <div>
+                <label class="form-label-cyber">Burst Time</label>
+                <input id="p-burst" type="number" class="form-control-cyber" value="5" min="1" />
+              </div>
+            </div>
+            <div class="grid-2" style="gap:12px; margin-bottom:16px;">
+              <div>
+                <label class="form-label-cyber">Priority (1=high)</label>
+                <input id="p-priority" type="number" class="form-control-cyber" value="1" min="1" max="10" />
+              </div>
+              <div id="rr-quantum-wrap">
+                <label class="form-label-cyber">Time Quantum (RR)</label>
+                <input id="p-quantum" type="number" class="form-control-cyber" value="3" min="1" />
+              </div>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn-cyber primary" style="flex:1;justify-content:center;" onclick="addProcess()">+ Add Process</button>
+              <button class="btn-cyber ghost" onclick="loadDefaults()">Load Demo</button>
+              <button class="btn-cyber ghost" style="color:var(--red);" onclick="clearAll()">Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Process Queue -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--green-glow);color:var(--green);">📋</div>
+            <div class="title">Process Queue</div>
+            <span id="proc-count" class="badge-cyber medium" style="margin-left:8px;">0 processes</span>
+          </div>
+          <div class="card-body" style="padding:0; max-height:280px; overflow-y:auto;">
+            <table class="table-cyber">
+              <thead>
+                <tr><th>ID</th><th>Name</th><th>AT</th><th>BT</th><th>Priority</th><th></th></tr>
+              </thead>
+              <tbody id="proc-table-body">
+                <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">No processes yet. Add some above.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Run button -->
+      <div style="text-align:center; margin-bottom:24px;">
+        <button class="btn-cyber primary" style="padding:12px 40px; font-size:14px;" onclick="runScheduler()">
+          ▶ Run <span id="run-algo-label">FCFS</span> Scheduling
+        </button>
+      </div>
+
+      <!-- Results -->
+      <div id="results-section" style="display:none;">
+        <div class="page-section-title">Scheduling Results</div>
+
+        <!-- Stats -->
+        <div class="grid-4 mb-6" id="result-stats">
+        </div>
+
+        <!-- Gantt Chart -->
+        <div class="card mb-6">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--purple-glow,rgba(153,102,255,0.15));color:var(--purple);">📊</div>
+            <div class="title">Gantt Chart</div>
+          </div>
+          <div class="card-body">
+            <div class="gantt-container" id="gantt-container"></div>
+          </div>
+        </div>
+
+        <!-- Detailed Table -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon" style="background:var(--cyan-glow);color:var(--cyan);">📋</div>
+            <div class="title">Detailed Results</div>
+          </div>
+          <div class="card-body" style="padding:0;">
+            <table class="table-cyber">
+              <thead>
+                <tr><th>Process</th><th>Arrival</th><th>Burst</th><th>Start</th><th>Finish</th><th>Waiting</th><th>Turnaround</th></tr>
+              </thead>
+              <tbody id="result-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    requireAuth();
+    document.getElementById('sidebar-mount').innerHTML = renderSidebar('processes');
+    document.getElementById('topbar-mount').innerHTML  = renderTopbar('Process Scheduling', 'FCFS · SJF · Round Robin · Priority');
+
+    const COLORS = ['#00d4ff','#00ff88','#ffc820','#ff3355','#9966ff','#ff8800','#ff69b4','#00ffff'];
+    let processes = [];
+    let currentAlgo = 'fcfs';
+    let pidCounter = 1;
+
+    function selectAlgo(algo) {
+      currentAlgo = algo;
+      document.querySelectorAll('.algo-card').forEach(c => c.classList.remove('active'));
+      document.getElementById('algo-' + algo)?.classList.add('active');
+      document.getElementById('run-algo-label').textContent = algo.toUpperCase().replace('RR','Round Robin').replace('PRIORITY','Priority');
+      document.getElementById('rr-quantum-wrap').style.display = algo === 'rr' ? '' : 'none';
+    }
+
+    function addProcess() {
+      const name     = document.getElementById('p-name').value.trim() || `P${pidCounter}`;
+      const arrival  = parseInt(document.getElementById('p-arrival').value) || 0;
+      const burst    = parseInt(document.getElementById('p-burst').value) || 1;
+      const priority = parseInt(document.getElementById('p-priority').value) || 1;
+
+      if (burst < 1) { showToast('Burst time must be ≥ 1', 'warning'); return; }
+
+      processes.push({ id: `P${pidCounter}`, name, arrivalTime: arrival, burstTime: burst, priority });
+      pidCounter++;
+
+      // Auto-increment name
+      const nameMatch = name.match(/^([A-Za-z]+)(\d+)$/);
+      if (nameMatch) document.getElementById('p-name').value = nameMatch[1] + (parseInt(nameMatch[2]) + 1);
+
+      renderProcTable();
+    }
+
+    function removeProcess(idx) {
+      processes.splice(idx, 1);
+      renderProcTable();
+    }
+
+    function clearAll() {
+      processes = []; pidCounter = 1;
+      renderProcTable();
+      document.getElementById('results-section').style.display = 'none';
+    }
+
+    function loadDefaults() {
+      processes = [
+        { id: 'P1', name: 'P1', arrivalTime: 0, burstTime: 8, priority: 3 },
+        { id: 'P2', name: 'P2', arrivalTime: 1, burstTime: 4, priority: 1 },
+        { id: 'P3', name: 'P3', arrivalTime: 2, burstTime: 9, priority: 4 },
+        { id: 'P4', name: 'P4', arrivalTime: 3, burstTime: 5, priority: 2 },
+        { id: 'P5', name: 'P5', arrivalTime: 4, burstTime: 2, priority: 5 },
+      ];
+      pidCounter = 6;
+      renderProcTable();
+      showToast('Demo processes loaded', 'info');
+    }
+
+    function renderProcTable() {
+      const tbody = document.getElementById('proc-table-body');
+      document.getElementById('proc-count').textContent = `${processes.length} processes`;
+      if (!processes.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">No processes yet.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = processes.map((p, i) => `
+        <tr class="process-table-row">
+          <td class="mono text-cyan">${p.id}</td>
+          <td class="text-bright">${p.name}</td>
+          <td class="mono">${p.arrivalTime}</td>
+          <td class="mono">${p.burstTime}</td>
+          <td><span class="badge-cyber medium">${p.priority}</span></td>
+          <td><button onclick="removeProcess(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;">×</button></td>
+        </tr>
+      `).join('');
+    }
+
+    async function runScheduler() {
+      if (!processes.length) { showToast('Add at least one process first', 'warning'); return; }
+
+      const quantum = parseInt(document.getElementById('p-quantum').value) || 3;
+      let url = `/processes/schedule/${currentAlgo}`;
+      if (currentAlgo === 'rr') url += `?quantum=${quantum}`;
+
+      const payload = { processes: processes.map(p => ({ ...p })) };
+      const res = await apiPost(url, payload);
+
+      if (!res?.ok) { showToast(res?.data?.message || 'Scheduling failed', 'error'); return; }
+
+      const d = res.data.data || res.data;
+      renderResults(d);
+      document.getElementById('results-section').style.display = '';
+      showToast(`${d.algorithm} scheduling complete`, 'success');
+    }
+
+    function renderResults(d) {
+      const schedule = d.schedule || [];
+      const gantt    = d.gantt   || schedule.map(p => ({ id: p.id||p.name, name: p.name, start: p.startTime, end: p.finishTime }));
+
+      // Stats
+      document.getElementById('result-stats').innerHTML = `
+        <div class="stat-card cyan"><div class="stat-label">Algorithm</div><div class="mono text-cyan" style="font-size:16px;font-weight:700;">${d.algorithm}</div></div>
+        <div class="stat-card green"><div class="stat-label">Avg Waiting Time</div><div class="stat-value green" style="font-size:22px;">${d.avgWaitingTime ?? '—'}</div></div>
+        <div class="stat-card yellow"><div class="stat-label">Avg Turnaround</div><div class="stat-value yellow" style="font-size:22px;">${d.avgTurnaroundTime ?? '—'}</div></div>
+        <div class="stat-card purple"><div class="stat-label">Processes</div><div class="stat-value" style="color:var(--purple);font-size:22px;">${schedule.length}</div></div>
+      `;
+
+      // Gantt Chart
+      const totalTime = gantt.reduce((max, g) => Math.max(max, g.end || 0), 0);
+      const container = document.getElementById('gantt-container');
+
+      const colorMap = {};
+      processes.forEach((p, i) => { colorMap[p.id] = COLORS[i % COLORS.length]; });
+
+      let ganttHTML = '<div class="gantt-timeline">';
+      gantt.forEach(g => {
+        const width = Math.max(40, ((g.end - g.start) / totalTime) * 600);
+        const color = colorMap[g.id] || COLORS[0];
+        ganttHTML += `<div class="gantt-seg" style="width:${width}px;background:${color};" title="${g.name} [${g.start}-${g.end}]">${g.name}</div>`;
+      });
+      ganttHTML += '</div>';
+
+      // Time markers
+      ganttHTML += '<div class="gantt-times">';
+      let lastEnd = 0;
+      gantt.forEach((g, i) => {
+        const width = Math.max(40, ((g.end - g.start) / totalTime) * 600);
+        if (i === 0) ganttHTML += `<div class="gantt-time-mark" style="width:0px;">${g.start}</div>`;
+        ganttHTML += `<div class="gantt-time-mark" style="width:${width}px; text-align:right;">${g.end}</div>`;
+      });
+      ganttHTML += '</div>';
+
+      container.innerHTML = ganttHTML;
+
+      // Table
+      document.getElementById('result-table-body').innerHTML = schedule.map(p => `
+        <tr>
+          <td class="mono text-cyan">${p.id || p.name}</td>
+          <td class="mono">${p.arrivalTime ?? '—'}</td>
+          <td class="mono">${p.burstTime ?? '—'}</td>
+          <td class="mono text-green">${p.startTime ?? p.firstRun ?? '—'}</td>
+          <td class="mono text-bright">${p.finishTime ?? '—'}</td>
+          <td class="mono text-yellow">${p.waitingTime ?? '—'}</td>
+          <td class="mono text-cyan">${p.turnaroundTime ?? '—'}</td>
+        </tr>
+      `).join('');
+    }
+
+    selectAlgo('fcfs');
+  </script>
+</body>
+</html>
