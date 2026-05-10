@@ -13,7 +13,10 @@ dotenv.config();
 const app = express();
 
 // ─── MIDDLEWARE ──────────────────────────────────────────────
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || '*', credentials: true }));
+app.use(cors({
+  origin: '*',
+  credentials: true
+}));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
